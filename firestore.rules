@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper Primitives
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isValidMaterial(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.category is string && data.category.size() <= 100 &&
+             data.brand is string && data.brand.size() <= 100 &&
+             data.unit in ['liters', 'gallons', 'cans', 'kg'] &&
+             (!('minThreshold' in data) || data.minThreshold is number) &&
+             data.createdBy == request.auth.uid;
+    }
+
+    function isValidBatch(data) {
+      return data.batchNumber is string && data.batchNumber.size() > 0 &&
+             data.expiryDate is timestamp &&
+             data.initialQuantity is number && data.initialQuantity >= 0 &&
+             data.currentQuantity is number && data.currentQuantity >= 0 &&
+             data.currentQuantity <= data.initialQuantity &&
+             data.status in ['active', 'expired', 'depleted'];
+    }
+
+    function isValidLog(data) {
+      return data.materialId is string && data.batchId is string &&
+             data.type in ['IN', 'OUT', 'ADJUSTMENT'] &&
+             data.quantity is number &&
+             data.userId == request.auth.uid &&
+             data.timestamp == request.time;
+    }
+
+    // --- Materials ---
+    match /materials/{materialId} {
+      allow list: if isSignedIn();
+      allow get: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(materialId) && isValidMaterial(incoming());
+      allow update: if isSignedIn() && isValidMaterial(incoming()) && 
+                    incoming().createdBy == existing().createdBy &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['name', 'category', 'brand', 'unit', 'minThreshold']);
+      allow delete: if isSignedIn() && existing().createdBy == request.auth.uid;
+
+      // --- Batches (Nested) ---
+      match /batches/{batchId} {
+        allow list: if isSignedIn();
+        allow get: if isSignedIn();
+        allow create: if isSignedIn() && isValidId(batchId) && isValidBatch(incoming()) &&
+                      exists(/databases/$(database)/documents/materials/$(materialId));
+        allow update: if isSignedIn() && isValidBatch(incoming()) &&
+                      (
+                        // Action: Update Quantity
+                        incoming().diff(existing()).affectedKeys().hasOnly(['currentQuantity', 'status']) ||
+                        // Action: General Info
+                        incoming().diff(existing()).affectedKeys().hasOnly(['batchNumber', 'expiryDate', 'location'])
+                      );
+      }
+    }
+
+    // --- Notification Settings ---
+    match /notificationSettings/{userId} {
+      allow get: if isOwner(userId);
+      allow write: if isOwner(userId) && 
+                   incoming().thresholdDays is number && incoming().thresholdDays >= 0 &&
+                   incoming().emailEnabled is bool && incoming().pushEnabled is bool;
+    }
+
+    // --- Inventory Logs ---
+    match /inventoryLogs/{logId} {
+      allow list: if isSignedIn(); // Filtering by userId/materialId constrained by queries
+      allow get: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(logId) && isValidLog(incoming());
+      // No updates or deletes allowed for logs (Immutability)
+    }
+  }
+}

@@ -1,0 +1,83 @@
+{
+  "entities": {
+    "Material": {
+      "title": "Material",
+      "description": "Definition of a paint material product",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "brand": { "type": "string" },
+        "unit": { "type": "string", "enum": ["liters", "gallons", "cans", "kg"] },
+        "minThreshold": { "type": "number", "description": "Minimum stock level for alerts" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["name", "category", "unit", "createdBy"]
+    },
+    "Batch": {
+      "title": "Batch",
+      "description": "A specific production batch of a material with an expiry date",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "materialId": { "type": "string" },
+        "batchNumber": { "type": "string" },
+        "expiryDate": { "type": "string", "format": "date-time" },
+        "initialQuantity": { "type": "number" },
+        "currentQuantity": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "expired", "depleted"] },
+        "location": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["materialId", "batchNumber", "expiryDate", "initialQuantity", "currentQuantity"]
+    },
+    "NotificationSetting": {
+      "title": "NotificationSetting",
+      "description": "User preferences for expiry notifications",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "thresholdDays": { "type": "number", "description": "Notify X days before expiry" },
+        "emailEnabled": { "type": "boolean" },
+        "pushEnabled": { "type": "boolean" }
+      },
+      "required": ["userId", "thresholdDays"]
+    },
+    "InventoryLog": {
+      "title": "InventoryLog",
+      "description": "History of inventory adjustments",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "batchId": { "type": "string" },
+        "materialId": { "type": "string" },
+        "type": { "type": "string", "enum": ["IN", "OUT", "ADJUSTMENT"] },
+        "quantity": { "type": "number" },
+        "reason": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "userId": { "type": "string" }
+      },
+      "required": ["batchId", "materialId", "type", "quantity", "userId"]
+    }
+  },
+  "firestore": {
+    "/materials/{materialId}": {
+      "schema": "Material",
+      "description": "Material definitions"
+    },
+    "/materials/{materialId}/batches/{batchId}": {
+      "schema": "Batch",
+      "description": "Batches for a specific material"
+    },
+    "/notificationSettings/{userId}": {
+      "schema": "NotificationSetting",
+      "description": "User notification preferences"
+    },
+    "/inventoryLogs/{logId}": {
+      "schema": "InventoryLog",
+      "description": "Global inventory movement logs"
+    }
+  }
+}
